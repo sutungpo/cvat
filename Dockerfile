@@ -3,7 +3,7 @@ ARG BASE_IMAGE=ubuntu:22.04
 
 FROM ${BASE_IMAGE} as build-image-base
 
-RUN apt-get update && \
+RUN sed -i 's/http:\/\/archive.ubuntu.com/http:\/\/mirrors.aliyun.com/g' /etc/apt/sources.list && apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get --no-install-recommends install -yq \
         curl \
         g++ \
@@ -25,7 +25,7 @@ RUN apt-get update && \
 ARG PIP_VERSION
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1
 RUN --mount=type=cache,target=/root/.cache/pip/http \
-    python3 -m pip install -U pip==${PIP_VERSION}
+    python3 -m pip install -U pip==${PIP_VERSION} && pip3 config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple/
 
 # We build OpenH264, FFmpeg and PyAV in a separate build stage,
 # because this way Docker can do it in parallel to all the other packages.
@@ -60,7 +60,7 @@ RUN grep -q '^av==' /tmp/utils/dataset_manifest/requirements.txt
 RUN sed -i '/^av==/!d' /tmp/utils/dataset_manifest/requirements.txt
 
 # Work around https://github.com/PyAV-Org/PyAV/issues/1140
-RUN pip install setuptools wheel 'cython<3'
+RUN pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple/ && pip install setuptools wheel 'cython<3'
 
 RUN --mount=type=cache,target=/root/.cache/pip/http-v2 \
     python3 -m pip wheel --no-binary=av --no-build-isolation \
@@ -79,7 +79,7 @@ RUN sed -i '/^av==/d' /tmp/utils/dataset_manifest/requirements.txt
 ARG CVAT_CONFIGURATION="production"
 
 RUN --mount=type=cache,target=/root/.cache/pip/http-v2 \
-    DATUMARO_HEADLESS=1 python3 -m pip wheel --no-deps \
+    DATUMARO_HEADLESS=1 pip3 config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple/ && python3 -m pip wheel --no-deps \
     -r /tmp/cvat/requirements/${CVAT_CONFIGURATION}.txt \
     -w /tmp/wheelhouse
 
@@ -110,7 +110,7 @@ ARG CVAT_CONFIGURATION="production"
 ENV DJANGO_SETTINGS_MODULE="cvat.settings.${CVAT_CONFIGURATION}"
 
 # Install necessary apt packages
-RUN apt-get update && \
+RUN sed -i 's/http:\/\/archive.ubuntu.com/http:\/\/mirrors.aliyun.com/g' /etc/apt/sources.list && apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get --no-install-recommends install -yq \
         bzip2 \
         ca-certificates \
@@ -129,6 +129,7 @@ RUN apt-get update && \
         p7zip-full \
         poppler-utils \
         python3 \
+	python3-pip \
         python3-venv \
         supervisor \
         tzdata \
@@ -163,14 +164,15 @@ RUN python3 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:${PATH}"
 # setuptools should be uninstalled after updating google-cloud-storage
 # https://github.com/googleapis/python-storage/issues/740
-RUN python -m pip install --upgrade setuptools
+RUN python -m pip install --upgrade setuptools 
 ARG PIP_VERSION
 ARG PIP_DISABLE_PIP_VERSION_CHECK=1
 
-RUN python -m pip install -U pip==${PIP_VERSION}
+# RUN python -m pip install -U pip==${PIP_VERSION}
+RUN python -m pip install opencv_python==4.5.4.60 --index-url https://pypi.tuna.tsinghua.edu.cn/simple/
 RUN --mount=type=bind,from=build-image,source=/tmp/wheelhouse,target=/mnt/wheelhouse \
     --mount=type=bind,from=build-image-av,source=/tmp/wheelhouse,target=/mnt/wheelhouse-av \
-    python -m pip install --no-index /mnt/wheelhouse/*.whl /mnt/wheelhouse-av/*.whl
+    pip3 config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple/ && python -m pip install --no-index /mnt/wheelhouse/*.whl /mnt/wheelhouse-av/*.whl
 
 ENV NUMPROCS=1
 COPY --from=build-image-av /opt/ffmpeg/lib /usr/lib
